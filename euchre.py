@@ -430,63 +430,31 @@ def bower_note(hand, trump):
 # rendering: statusline board (compact, lives below the prompt)
 # --------------------------------------------------------------------------- #
 def render_board(state):
+    """Clean two-line scoreboard mirror for the statusline. Play happens in the
+    interactive game in a separate terminal; this is a glanceable status only."""
     trump = state["trump"]
     you, them = state["scores"]
-    maker, alone = state["maker"], state["alone"]
     won = state["tricks"][0] + state["tricks"][2]
     lost = state["tricks"][1] + state["tricks"][3]
-    alone_tag = " (alone)" if alone else ""
 
-    banner = (
-        "%s %sEUCHRE%s  You %s%d%s·Them %s%d%s  Trump %s%s%s  Maker %s%s  tricks %d-%d"
-        % (
-            csuit(trump), BOLD, RST,
-            GRN, you, RST, REDC, them, RST,
-            csuit(trump), SUIT_NAME[trump], "" if not COLOR else "",
-            SEAT[maker], alone_tag, won, lost,
-        )
+    head = "%s %sEUCHRE%s   You %s%d%s · Them %s%d%s   trump %s %s   tricks %d-%d" % (
+        csuit(trump), BOLD, RST,
+        GRN, you, RST, REDC, them, RST,
+        csuit(trump), SUIT_NAME[trump], won, lost,
     )
-    lines = [banner]
 
-    if state["phase"] in ("done", "gameover"):
-        lines.append("  " + (state["log"][-1] if state["log"] else ""))
-        if state["phase"] == "gameover":
-            msg = "YOU WIN! \U0001f389" if you >= 10 else "Opponents win."
-            lines.append("  " + BOLD + msg + RST + "   play again:  !euc new")
-        else:
-            lines.append("  next hand:  " + BOLD + "!euc new" + RST)
-        return "\n".join(lines)
-
-    seats = active_seats(maker, alone)
-
-    if 0 in seats:
-        toks = ["[%d]%s" % (i, ctoken(c, trump)) for i, c in enumerate(state["hands"][0])]
-        lines.append("  hand   " + "  ".join(toks))
+    if state["phase"] == "gameover":
+        msg = "YOU WIN! \U0001f389" if you >= 10 else "Opponents win."
+        tail = "  " + BOLD + msg + RST + DIM + "   (deal again in your euchre terminal)" + RST
+    elif state["phase"] == "done":
+        tail = "  " + DIM + "hand over — deal the next one in your euchre terminal" + RST
     else:
-        lines.append("  " + DIM + "(your partner is going alone — sit back)" + RST)
-
-    played = {s: c for s, c in state["trick"]}
-    cells = []
-    for s in range(4):
-        if s not in seats:
-            continue
-        c = played.get(s)
-        mark = "▸" if state["turn"] == s and c is None else " "
-        cells.append("%s%s %s" % (mark, SEAT[s], ctoken(c, trump) if c else "—"))
-    lines.append("  trick  " + "   ".join(cells))
-
-    if state["turn"] == 0 and 0 in seats:
-        legal = legal_indices(state["hands"][0], state["led"], trump)
-        choices = "/".join(str(i) for i in legal)
-        if state["led"]:
-            suffix = "  (follow %s)" % csuit(state["led"])
+        seats = active_seats(state["maker"], state["alone"])
+        if state["turn"] == 0 and 0 in seats:
+            tail = "  " + BOLD + YEL + "▸ your turn" + RST + DIM + " — play in your euchre terminal" + RST
         else:
-            suffix = "  (your lead)"
-        lines.append("  " + BOLD + YEL + "YOUR TURN" + RST + "  play:  !euc " + choices + suffix)
-    else:
-        lines.append("  " + DIM + "…opponents thinking — board updates as we go…" + RST)
-
-    return "\n".join(lines)
+            tail = "  " + DIM + "…%s to play…" % SEAT[state["turn"]] + RST
+    return head + "\n" + tail
 
 
 # --------------------------------------------------------------------------- #
@@ -664,26 +632,30 @@ def uninstall_statusline(settings_path, eu_dir):
 # commands
 # --------------------------------------------------------------------------- #
 HELP = """\
-{b}claude-euchre{r} — Euchre in your Claude Code statusline.
+{b}claude-euchre{r} — a quick game of Euchre while Claude works.
 
-{b}Commands{r} (run with the in-session ! prefix):
-  {c}!euc new{r}    deal a fresh hand
-  {c}!euc 2{r}      play card #2 from your hand
-  {c}!euc{r}        show the full table inline
-  {c}!euc auto{r}   watch the AI play a whole game (demo)
-  {c}!euc quit{r}   stop (statusline reverts to normal)
-  {c}!euc help{r}   this screen
+{b}How to play (zero lag):{r}
+  Open a {b}second terminal{r} (a new tab/window, or a tmux split) and run:
+      {c}euchre{r}
+  Play there in real time while Claude works in the other window. Inside the
+  game just press a {b}number{r} (1-5) to play that card, then Enter.
+      {c}n{r} = new hand    {c}q{r} = quit    {c}?{r} = this help
+
+{b}Why a second terminal:{r} anything typed into the Claude prompt (including
+{c}!euc{r}) waits for Claude's turn to finish — that lag defeats the point. A
+separate terminal is independent, so play is instant. The Claude statusline
+still shows a live scoreboard.
 
 {b}You{r} are South; {b}Partner{r} is North; {b}West/East{r} are opponents.
-Follow the led suit if you can. First team to {b}10{r} wins.
+Follow the led suit if you can. First team to {b}10{r} points wins.
 
-{b}Bowers{r} (the one trick beginners miss):
+{b}Bowers{r} (the one rule beginners miss):
   • Right bower = Jack of the trump suit  = the highest card.
   • Left bower  = Jack of the same colour  = 2nd highest, and it
     counts as a {b}trump{r} card, not its printed suit.
   Example: trump {y}Hearts{r} → J{y}♥{r} is highest, J{y}♦{r} is 2nd and plays as a Heart.
 
-Bidding is automatic (stick-the-dealer) so you can jump straight to playing.
+Bidding is automatic (stick-the-dealer) so you jump straight to playing.
 """.format(b=BOLD, r=RST, c=CYN, y=YEL)
 
 
